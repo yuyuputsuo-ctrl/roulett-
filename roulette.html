@@ -176,6 +176,30 @@
             alert("全プレイヤーに開始を通知しました。");
         }
     </script>
+<div id="view-client-game" class="card hidden" style="max-width: 600px;">
+    <h3>残高: ¥<span id="game-balance">0</span></h3>
+    <div id="betting-board">
+        <p>賭け方を選択</p>
+        <select id="client-bet-type">
+            <option value="36">1点賭け (36倍)</option>
+            <option value="2">赤黒 (2倍)</option>
+        </select>
+        <input type="number" id="client-bet-amount" placeholder="賭け金">
+        <button onclick="placeBet()" style="background:var(--green); color:white;">ベットを確定する</button>
+    </div>
+    <div id="my-bet-status" style="margin-top:10px; font-size:0.9rem; color:var(--gold);"></div>
+</div>
+
+<div id="view-host-game" class="card hidden" style="max-width: 600px;">
+    <h2>ディーラー画面</h2>
+    <div id="host-player-bets" style="text-align:left; margin-bottom:20px;">
+        </div>
+    <hr>
+    <h3>当選番号を入力</h3>
+    <input type="number" id="winning-number" min="0" max="36" placeholder="0-36">
+    <button onclick="settleGame()" style="background:var(--red); color:white;">結果を確定・配当計算</button>
+</div>
 </body>
 
 </html>
+
