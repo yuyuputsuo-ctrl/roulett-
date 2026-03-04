@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Firebase Roulette Manager</title>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+    <style>
+        :root { --gold: #ffb703; --green: #008151; --dark: #1a1a2e; --white: #efefef; --red: #e63946; }
+        body { font-family: sans-serif; background: var(--dark); color: var(--white); text-align: center; padding: 20px; margin: 0; }
+        .card { background: #16213e; padding: 20px; border-radius: 15px; max-width: 450px; margin: 20px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        .hidden { display: none; }
+        input, button { width: 90%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; font-size: 1rem; box-sizing: border-box; }
+        button { background: var(--gold); color: black; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:active { transform: scale(0.98); }
+        #qrcode { background: white; padding: 10px; display: inline-block; margin: 15px 0; }
+        .player-item { background: rgba(255,255,255,0.1); padding: 10px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .status-ready { color: var(--green); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+    <div id="view-start" class="card">
+        <h1>Roulette Multi</h1>
+        <button onclick="showHostSetup()">親（ディーラー）として開始</button>
+        <button onclick="showClientLogin()">子（プレイヤー）として参加</button>
+    </div>
+
+    <div id="view-host-setup" class="card hidden">
+        <h2>親：ルーム作成</h2>
+        <label>参加人数（子）</label>
+        <input type="number" id="host-limit" value="3">
+        <label>初期所持金（全員一律）</label>
+        <input type="number" id="host-initial-money" value="10000">
+        <button onclick="createRoom()">ルーム作成＆QR表示</button>
+    </div>
+
+    <div id="view-host-waiting" class="card hidden">
+        <h2>参加待機中</h2>
+        <div id="qrcode"></div>
+        <div style="font-size: 0.9rem; margin-bottom: 5px;">Password:</div>
+        <div id="display-pw" style="font-size: 2.5rem; color: var(--gold); font-weight: bold;">----</div>
+        <hr>
+        <div id="player-list-container">
+            <p>参加中のプレイヤー (<span id="current-count">0</span> / <span id="target-count">0</span>)</p>
+            <div id="host-player-list"></div>
+        </div>
+        <button id="btn-start-game" onclick="startGame()" disabled>全員揃ったらゲーム開始</button>
+    </div>
+
+    <div id="view-client-login" class="card hidden">
+        <h2>プレイヤー参加</h2>
+        <input type="number" id="login-pw" placeholder="4桁のパスワード">
+        <input type="text" id="login-name" placeholder="プレイヤー名">
+        <button onclick="joinRoom()">準備完了（接続）</button>
+    </div>
+
+    <div id="view-client-waiting" class="card hidden">
+        <h2>接続完了！</h2>
+        <p>ディーラーが開始するまでお待ちください...</p>
+        <div style="font-size: 1.2rem; color: var(--gold);">
+            Name: <span id="my-name-disp"></span><br>
+            Balance: ¥<span id="my-money-disp"></span>
+        </div>
+        <div style="margin-top: 20px; font-size: 3rem; animation: spin 2s linear infinite;">🎲</div>
+    </div>
+
+    <style> @keyframes spin { from {transform:rotate(0deg);} to {transform:rotate(360deg);} </style>
+
+    <script>
+        // --- Firebase 設定 (ここを自分のプロジェクトのものに差し替えてください) ---
+        const firebaseConfig = {
+            apiKey: "YOUR_API_KEY",
+            authDomain: "YOUR_PROJECT.firebaseapp.com",
+            databaseURL: "https://YOUR_PROJECT.firebaseio.com",
+            projectId: "YOUR_PROJECT",
+            storageBucket: "YOUR_PROJECT.appspot.com",
+            messagingSenderId: "...",
+            appId: "..."
+        };
+
+        // Firebase 初期化
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        let roomId = "main-room"; // 今回は簡単のため1つのルーム固定
+
+        // 表示切り替え
+        function showView(id) {
+            document.querySelectorAll('div[id^="view-"]').forEach(d => d.classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
+        }
+
+        // --- 親の処理 ---
+        function showHostSetup() { showView('view-host-setup'); }
+
+        function createRoom() {
+            const limit = document.getElementById('host-limit').value;
+            const initial = document.getElementById('host-initial-money').value;
+            const pw = Math.floor(1000 + Math.random() * 9000).toString();
+
+            db.ref(roomId).set({
+                config: { limit: parseInt(limit), initial: parseInt(initial), pw: pw, status: 'waiting' },
+                players: {}
+            });
+
+            document.getElementById('display-pw').innerText = pw;
+            document.getElementById('target-count').innerText = limit;
+            
+            new QRCode(document.getElementById("qrcode"), {
+                text: window.location.href,
+                width: 150, height: 150
+            });
+
+            showView('view-host-waiting');
+            listenPlayers();
+        }
+
+        function listenPlayers() {
+            db.ref(`${roomId}/players`).on('value', (snapshot) => {
+                const players = snapshot.val() || {};
+                const listDiv = document.getElementById('host-player-list');
+                listDiv.innerHTML = "";
+                let count = 0;
+
+                Object.keys(players).forEach(id => {
+                    count++;
+                    const p = players[id];
+                    listDiv.innerHTML += `<div class="player-item">${p.name} <span class="status-ready">READY</span></div>`;
+                });
+
+                document.getElementById('current-count').innerText = count;
+                const limit = document.getElementById('target-count').innerText;
+                if(count >= parseInt(limit)) {
+                    document.getElementById('btn-start-game').disabled = false;
+                }
+            });
+        }
+
+        // --- 子の処理 ---
+        function showClientLogin() { showView('view-client-login'); }
+
+        async function joinRoom() {
+            const pwIn = document.getElementById('login-pw').value;
+            const name = document.getElementById('login-name').value;
+
+            const snapshot = await db.ref(`${roomId}/config`).once('value');
+            const config = snapshot.val();
+
+            if (config && config.pw === pwIn && name !== "") {
+                const newPlayerRef = db.ref(`${roomId}/players`).push();
+                newPlayerRef.set({
+                    name: name,
+                    balance: config.initial
+                });
+
+                document.getElementById('my-name-disp').innerText = name;
+                document.getElementById('my-money-disp').innerText = config.initial.toLocaleString();
+                showView('view-client-waiting');
+
+                // 親が開始したか監視
+                db.ref(`${roomId}/config/status`).on('value', (snap) => {
+                    if(snap.val() === 'playing') {
+                        alert("ゲーム開始！配当計算画面へ進みます。");
+                        // ここでゲーム画面へ遷移
+                    }
+                });
+            } else {
+                alert("パスワードが違うか、ルームが存在しません。");
+            }
+        }
+
+        function startGame() {
+            db.ref(`${roomId}/config`).update({ status: 'playing' });
+            alert("全プレイヤーに開始を通知しました。");
+        }
+    </script>
+</body>
+</html>
