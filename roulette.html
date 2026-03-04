@@ -3,259 +3,204 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Roulette Pro - Final Version</title>
+    <title>Firebase Roulette Manager</title>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <style>
-        :root { --gold: #ffb703; --green: #008151; --dark: #1a1a2e; --white: #efefef; --red: #e63946; --black: #000000; }
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; background: var(--dark); color: var(--white); text-align: center; padding: 20px; margin: 0; }
-        .card { background: #16213e; padding: 20px; border-radius: 15px; max-width: 500px; margin: 20px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        :root { --gold: #ffb703; --green: #008151; --dark: #1a1a2e; --white: #efefef; --red: #e63946; }
+        body { font-family: sans-serif; background: var(--dark); color: var(--white); text-align: center; padding: 20px; margin: 0; }
+        .card { background: #16213e; padding: 20px; border-radius: 15px; max-width: 450px; margin: 20px auto; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         .hidden { display: none; }
-        input, button, select { width: 90%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; font-size: 1rem; box-sizing: border-box; }
+        input, button { width: 90%; padding: 12px; margin: 10px 0; border-radius: 8px; border: none; font-size: 1rem; box-sizing: border-box; }
         button { background: var(--gold); color: black; font-weight: bold; cursor: pointer; transition: 0.2s; }
-        button:disabled { background: #555; color: #888; cursor: not-allowed; }
-        #qrcode { background: white; padding: 10px; display: inline-block; margin: 15px 0; border-radius: 5px; }
-        .player-item { background: rgba(255,255,255,0.1); padding: 12px; margin: 8px 0; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; }
-        .balance-val { color: var(--gold); font-weight: bold; }
-        .win-anim { color: #00ff00; font-weight: bold; font-size: 1.5rem; animation: pulse 1s infinite; }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); } 100% { transform: scale(1); } }
-        .bet-info { font-size: 0.8rem; color: #aaa; }
+        button:active { transform: scale(0.98); }
+        #qrcode { background: white; padding: 10px; display: inline-block; margin: 15px 0; }
+        .player-item { background: rgba(255,255,255,0.1); padding: 10px; margin: 5px 0; border-radius: 5px; display: flex; justify-content: space-between; align-items: center; }
+        .status-ready { color: var(--green); font-weight: bold; }
     </style>
 </head>
 <body>
 
     <div id="view-start" class="card">
-        <h1 style="color:var(--gold)">ROULETTE PRO</h1>
-        <button onclick="showView('view-host-setup')">親（ディーラー）画面へ</button>
-        <button onclick="showView('view-client-login')" style="background:#4cc9f0">子（プレイヤー）画面へ</button>
+        <h1>Roulette Multi</h1>
+        <button onclick="showHostSetup()">親（ディーラー）として開始</button>
+        <button onclick="showClientLogin()">子（プレイヤー）として参加</button>
     </div>
 
     <div id="view-host-setup" class="card hidden">
-        <h2>ルーム新規作成</h2>
+        <h2>親：ルーム作成</h2>
         <label>参加人数（子）</label>
-        <input type="number" id="host-limit" value="2">
-        <label>初期配布チップ (¥)</label>
+        <input type="number" id="host-limit" value="3">
+        <label>初期所持金（全員一律）</label>
         <input type="number" id="host-initial-money" value="10000">
-        <button onclick="createRoom()">サーバー起動</button>
+        <button onclick="createRoom()">ルーム作成＆QR表示</button>
     </div>
 
     <div id="view-host-waiting" class="card hidden">
-        <h2>参加者をお待ちください</h2>
+        <h2>参加待機中</h2>
         <div id="qrcode"></div>
-        <div style="font-size: 0.8rem;">PASSWORD</div>
-        <div id="display-pw" style="font-size: 3rem; color: var(--gold); font-weight: bold; letter-spacing: 5px;">----</div>
-        <div id="host-player-list"></div>
-        <button id="btn-start-game" onclick="startGame()" disabled>ゲームを開始する</button>
-    </div>
-
-    <div id="view-host-game" class="card hidden">
-        <h2 style="border-bottom: 2px solid var(--gold); padding-bottom: 10px;">DEALER PANEL</h2>
-        <div id="host-live-bets" style="text-align:left; min-height: 100px;"></div>
-        <hr style="border:0; border-top:1px dashed #444;">
-        <h3>当選番号を入力 (0-36)</h3>
-        <input type="number" id="win-number-input" min="0" max="36" style="font-size: 2rem; text-align: center;">
-        <button onclick="settleGame()" style="background:var(--red); color:white; font-size: 1.2rem; height: 60px;">配当を確定・反映</button>
+        <div style="font-size: 0.9rem; margin-bottom: 5px;">Password:</div>
+        <div id="display-pw" style="font-size: 2.5rem; color: var(--gold); font-weight: bold;">----</div>
+        <hr>
+        <div id="player-list-container">
+            <p>参加中のプレイヤー (<span id="current-count">0</span> / <span id="target-count">0</span>)</p>
+            <div id="host-player-list"></div>
+        </div>
+        <button id="btn-start-game" onclick="startGame()" disabled>全員揃ったらゲーム開始</button>
     </div>
 
     <div id="view-client-login" class="card hidden">
-        <h2>PLAYER JOIN</h2>
+        <h2>プレイヤー参加</h2>
         <input type="number" id="login-pw" placeholder="4桁のパスワード">
         <input type="text" id="login-name" placeholder="プレイヤー名">
-        <button onclick="joinRoom()">接続する</button>
+        <button onclick="joinRoom()">準備完了（接続）</button>
     </div>
 
     <div id="view-client-waiting" class="card hidden">
-        <h2 id="wait-msg">接続完了！</h2>
-        <p>名前: <span id="my-name-disp" class="balance-val"></span></p>
-        <p>初期資金: ¥<span id="my-money-init" class="balance-val"></span></p>
-        <p style="color:#888;">ディーラーがゲームを開始するまで<br>そのままお待ちください...</p>
+        <h2>接続完了！</h2>
+        <p>ディーラーが開始するまでお待ちください...</p>
+        <div style="font-size: 1.2rem; color: var(--gold);">
+            Name: <span id="my-name-disp"></span><br>
+            Balance: ¥<span id="my-money-disp"></span>
+        </div>
+        <div style="margin-top: 20px; font-size: 3rem; animation: spin 2s linear infinite;">🎲</div>
     </div>
 
-    <div id="view-client-game" class="card hidden">
-        <div style="display:flex; justify-content: space-between; align-items: center;">
-            <span id="p-name-head"></span>
-            <span style="font-size: 1.5rem; color:var(--gold);">¥<span id="game-balance">0</span></span>
-        </div>
-        <div id="betting-area" style="margin-top:20px; border-top: 1px solid #444; padding-top: 20px;">
-            <label>賭け方 (Type)</label>
-            <select id="bet-type">
-                <option value="straight">1点賭け (36倍)</option>
-                <option value="red">赤 (2倍)</option>
-                <option value="black">黒 (2倍)</option>
-                <option value="even">偶数 (2倍)</option>
-                <option value="odd">奇数 (2倍)</option>
-                <option value="1st12">第1ダズン 1-12 (3倍)</option>
-                <option value="2nd12">第2ダズン 13-24 (3倍)</option>
-                <option value="3rd12">第3ダズン 25-36 (3倍)</option>
-            </select>
-            <div id="target-number-input">
-                <label>賭ける番号 (0-36)</label>
-                <input type="number" id="bet-target" min="0" max="36" value="0">
-            </div>
-            <label>賭け金 (Amount)</label>
-            <input type="number" id="bet-amount" placeholder="金額を入力">
-            <button onclick="placeBet()" id="btn-bet">ベットを確定する</button>
-        </div>
-        <div id="bet-result-msg" style="margin-top:20px; min-height: 50px;"></div>
-    </div>
+    <style> @keyframes spin { from {transform:rotate(0deg);} to {transform:rotate(360deg);} </style>
 
     <script>
-        // --- Firebase Configuration ---
+        // --- Firebase 設定 (ここを自分のプロジェクトのものに差し替えてください) ---
         const firebaseConfig = {
             apiKey: "AIzaSyCV0aWNuuWfoku9yXyWf8a6Ru036CpD6BU",
-            authDomain: "roulette2-18bd3.firebaseapp.com",
-            databaseURL: "https://roulette2-18bd3-default-rtdb.asia-southeast1.firebasedatabase.app",
-            projectId: "roulette2-18bd3",
-            storageBucket: "roulette2-18bd3.firebasestorage.app",
-            messagingSenderId: "527520888855",
-            appId: "1:527520888855:web:5290b68c5a4fb7b8038452"
-        };
+    authDomain: "roulette2-18bd3.firebaseapp.com",
+    databaseURL: "https://roulette2-18bd3-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "roulette2-18bd3",
+    storageBucket: "roulette2-18bd3.firebasestorage.app",
+    messagingSenderId: "527520888855",
+    appId: "1:527520888855:web:5290b68c5a4fb7b8038452"
+  };
 
+        // Firebase 初期化
         firebase.initializeApp(firebaseConfig);
         const db = firebase.database();
-        const roomId = "roulette-pro-room"; // 共通の部屋ID
-        let myId = "";
-        const redNums = [1,3,5,7,9,12,14,16,18,19,21,23,25,27,30,32,34,36];
+        let roomId = "main-room"; // 今回は簡単のため1つのルーム固定
 
+        // 表示切り替え
         function showView(id) {
-            document.querySelectorAll('.card').forEach(c => c.classList.add('hidden'));
+            document.querySelectorAll('div[id^="view-"]').forEach(d => d.classList.add('hidden'));
             document.getElementById(id).classList.remove('hidden');
         }
 
-        // 1点賭け以外は番号入力を隠す
-        document.getElementById('bet-type').addEventListener('change', (e) => {
-            document.getElementById('target-number-input').style.display = (e.target.value === 'straight') ? 'block' : 'none';
-        });
+        // --- 親の処理 ---
+        function showHostSetup() { showView('view-host-setup'); }
 
-        // --- 親のロジック ---
         function createRoom() {
-            const limit = parseInt(document.getElementById('host-limit').value);
-            const initial = parseInt(document.getElementById('host-initial-money').value);
+            const limit = document.getElementById('host-limit').value;
+            const initial = document.getElementById('host-initial-money').value;
             const pw = Math.floor(1000 + Math.random() * 9000).toString();
 
             db.ref(roomId).set({
-                config: { limit, initial, pw, status: 'waiting' },
+                config: { limit: parseInt(limit), initial: parseInt(initial), pw: pw, status: 'waiting' },
                 players: {}
             });
 
             document.getElementById('display-pw').innerText = pw;
-            new QRCode(document.getElementById("qrcode"), { text: window.location.href, width: 140, height: 140 });
+            document.getElementById('target-count').innerText = limit;
+            
+            new QRCode(document.getElementById("qrcode"), {
+                text: window.location.href,
+                width: 150, height: 150
+            });
+
             showView('view-host-waiting');
-
-            db.ref(`${roomId}/players`).on('value', snap => {
-                const players = snap.val() || {};
-                const list = document.getElementById('host-player-list');
-                list.innerHTML = "";
-                const keys = Object.keys(players);
-                keys.forEach(k => {
-                    list.innerHTML += `<div class="player-item"><span>${players[k].name}</span><span style="color:var(--green)">参加中</span></div>`;
-                });
-                document.getElementById('btn-start-game').disabled = (keys.length < limit);
-            });
+            listenPlayers();
         }
 
-        function startGame() {
-            db.ref(`${roomId}/config`).update({ status: 'playing', lastWinNum: -1 });
-            showView('view-host-game');
-            db.ref(`${roomId}/players`).on('value', snap => {
-                const players = snap.val() || {};
-                const container = document.getElementById('host-live-bets');
-                container.innerHTML = "<h4>現在の全プレイヤー状況:</h4>";
-                Object.keys(players).forEach(k => {
-                    const p = players[k];
-                    const betTxt = p.currentBet ? `¥${p.currentBet.amount} (${p.currentBet.type})` : `<span style="color:#666">思考中...</span>`;
-                    container.innerHTML += `<div class="player-item"><div>${p.name}<br><span class="bet-info">${betTxt}</span></div><div class="balance-val">¥${p.balance}</div></div>`;
+        function listenPlayers() {
+            db.ref(`${roomId}/players`).on('value', (snapshot) => {
+                const players = snapshot.val() || {};
+                const listDiv = document.getElementById('host-player-list');
+                listDiv.innerHTML = "";
+                let count = 0;
+
+                Object.keys(players).forEach(id => {
+                    count++;
+                    const p = players[id];
+                    listDiv.innerHTML += `<div class="player-item">${p.name} <span class="status-ready">READY</span></div>`;
                 });
-            });
-        }
 
-        async function settleGame() {
-            const winNum = parseInt(document.getElementById('win-number-input').value);
-            if (isNaN(winNum) || winNum < 0 || winNum > 36) return alert("0〜36の有効な番号を入力してください");
-
-            const snap = await db.ref(`${roomId}/players`).once('value');
-            const players = snap.val();
-
-            for (let id in players) {
-                let p = players[id];
-                if (p.currentBet) {
-                    let isWin = false;
-                    let multiplier = 0;
-                    const b = p.currentBet;
-
-                    switch(b.type) {
-                        case 'straight': if(winNum === b.target) { isWin = true; multiplier = 36; } break;
-                        case 'red': if(redNums.includes(winNum)) { isWin = true; multiplier = 2; } break;
-                        case 'black': if(winNum !== 0 && !redNums.includes(winNum)) { isWin = true; multiplier = 2; } break;
-                        case 'even': if(winNum !== 0 && winNum % 2 === 0) { isWin = true; multiplier = 2; } break;
-                        case 'odd': if(winNum !== 0 && winNum % 2 !== 0) { isWin = true; multiplier = 2; } break;
-                        case '1st12': if(winNum >= 1 && winNum <= 12) { isWin = true; multiplier = 3; } break;
-                        case '2nd12': if(winNum >= 13 && winNum <= 24) { isWin = true; multiplier = 3; } break;
-                        case '3rd12': if(winNum >= 25 && winNum <= 36) { isWin = true; multiplier = 3; } break;
-                    }
-
-                    const winAmount = isWin ? b.amount * multiplier : 0;
-                    await db.ref(`${roomId}/players/${id}`).update({
-                        balance: p.balance + winAmount,
-                        lastWin: winAmount,
-                        lastStatus: isWin ? 'WIN' : 'LOSE',
-                        currentBet: null
-                    });
+                document.getElementById('current-count').innerText = count;
+                const limit = document.getElementById('target-count').innerText;
+                if(count >= parseInt(limit)) {
+                    document.getElementById('btn-start-game').disabled = false;
                 }
-            }
-            db.ref(`${roomId}/config`).update({ lastWinNum: winNum, trigger: Date.now() });
-            document.getElementById('win-number-input').value = "";
-            alert(`結果確定: ${winNum} 番`);
+            });
         }
 
-        // --- 子のロジック ---
+        // --- 子の処理 ---
+        function showClientLogin() { showView('view-client-login'); }
+
         async function joinRoom() {
             const pwIn = document.getElementById('login-pw').value;
             const name = document.getElementById('login-name').value;
-            const snap = await db.ref(`${roomId}/config`).once('value');
-            const config = snap.val();
+
+            const snapshot = await db.ref(`${roomId}/config`).once('value');
+            const config = snapshot.val();
 
             if (config && config.pw === pwIn && name !== "") {
-                const ref = db.ref(`${roomId}/players`).push();
-                myId = ref.key;
-                await ref.set({ name, balance: config.initial, currentBet: null, lastWin: -1 });
+                const newPlayerRef = db.ref(`${roomId}/players`).push();
+                newPlayerRef.set({
+                    name: name,
+                    balance: config.initial
+                });
 
                 document.getElementById('my-name-disp').innerText = name;
-                document.getElementById('my-money-init').innerText = config.initial.toLocaleString();
-                document.getElementById('p-name-head').innerText = name;
+                document.getElementById('my-money-disp').innerText = config.initial.toLocaleString();
                 showView('view-client-waiting');
 
-                db.ref(`${roomId}/config`).on('value', s => {
-                    const conf = s.val();
-                    if (conf.status === 'playing') showView('view-client-game');
+                // 親が開始したか監視
+                db.ref(`${roomId}/config/status`).on('value', (snap) => {
+                    if(snap.val() === 'playing') {
+                        alert("ゲーム開始！配当計算画面へ進みます。");
+                        // ここでゲーム画面へ遷移
+                    }
                 });
-
-                db.ref(`${roomId}/players/${myId}`).on('value', s => {
-                    const p = s.val();
-                    document.getElementById('game-balance').innerText = p.balance.toLocaleString();
-                    const msgDiv = document.getElementById('bet-result-msg');
-                    if (p.lastStatus === 'WIN') msgDiv.innerHTML = `<div class="win-anim">当たり！ +¥${p.lastWin.toLocaleString()}</div>`;
-                    else if (p.lastStatus === 'LOSE') msgDiv.innerHTML = `<div style="color:#ff4d4d">はずれ...</div>`;
-                });
-            } else { alert("パスワードが違うか、入力が不十分です"); }
+            } else {
+                alert("パスワードが違うか、ルームが存在しません。");
+            }
         }
 
-        function placeBet() {
-            const amt = parseInt(document.getElementById('bet-amount').value);
-            const type = document.getElementById('bet-type').value;
-            const target = parseInt(document.getElementById('bet-target').value);
-            const bal = parseInt(document.getElementById('game-balance').innerText.replace(/,/g, ''));
-
-            if (isNaN(amt) || amt <= 0 || amt > bal) return alert("有効な金額を入力してください");
-
-            db.ref(`${roomId}/players/${myId}`).update({
-                currentBet: { amount: amt, type, target },
-                balance: bal - amt,
-                lastStatus: 'PENDING'
-            });
-            document.getElementById('bet-result-msg').innerHTML = `<div style="color:var(--gold)">ベット完了。結果を待っています...</div>`;
+        function startGame() {
+            db.ref(`${roomId}/config`).update({ status: 'playing' });
+            alert("全プレイヤーに開始を通知しました。");
         }
     </script>
+<div id="view-client-game" class="card hidden" style="max-width: 600px;">
+    <h3>残高: ¥<span id="game-balance">0</span></h3>
+    <div id="betting-board">
+        <p>賭け方を選択</p>
+        <select id="client-bet-type">
+            <option value="36">1点賭け (36倍)</option>
+            <option value="2">赤黒 (2倍)</option>
+        </select>
+        <input type="number" id="client-bet-amount" placeholder="賭け金">
+        <button onclick="placeBet()" style="background:var(--green); color:white;">ベットを確定する</button>
+    </div>
+    <div id="my-bet-status" style="margin-top:10px; font-size:0.9rem; color:var(--gold);"></div>
+</div>
+
+<div id="view-host-game" class="card hidden" style="max-width: 600px;">
+    <h2>ディーラー画面</h2>
+    <div id="host-player-bets" style="text-align:left; margin-bottom:20px;">
+        </div>
+    <hr>
+    <h3>当選番号を入力</h3>
+    <input type="number" id="winning-number" min="0" max="36" placeholder="0-36">
+    <button onclick="settleGame()" style="background:var(--red); color:white;">結果を確定・配当計算</button>
+</div>
 </body>
+
 </html>
+
+
